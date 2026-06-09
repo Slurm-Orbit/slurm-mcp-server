@@ -1,9 +1,38 @@
 {
-  "name": "mcp-server",
-  "module": "index.ts",
+  "name": "@slurm-orbit/slurm-mcp-server",
+  "version": "0.0.1",
+  "description": "MCP server for Slurm HPC clusters — job submission, monitoring, and file management",
   "type": "module",
+  "main": "index.js",
+  "bin": {
+    "slurm-mcp-server": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "src"
+  ],
+  "scripts": {
+    "start": "node index.js",
+    "test": "bun test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "slurm",
+    "hpc",
+    "cluster",
+    "job-scheduler"
+  ],
+  "license": "Apache-2.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "log4js": "^6.9.1",
+    "slurmjs": "^0.1.3",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0"
   }
 }

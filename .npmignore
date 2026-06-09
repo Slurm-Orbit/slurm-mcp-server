@@ -1,0 +1,4 @@
+test/
+eslint.config.js
+bun.lock
+.gitignore
