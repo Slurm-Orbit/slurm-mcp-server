@@ -34,7 +34,7 @@ async function getSlurmTemplateFile({ name }) {
 
 const getSlurmTemplateFileTool = new Tool(
     "get-slurm-template-file",
-    "Get a Slurm template file, The slurm file content should be based on the template.",
+    "Get a Slurm template file, The slurm file content should be based on the template, you can only append the content to the template, not modify the template.",
     z.object({
         name: z.enum(await getSlurmTemplateFiles()).describe("The name of the template." ),
     }),
