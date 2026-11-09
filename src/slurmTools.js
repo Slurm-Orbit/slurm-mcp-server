@@ -1,9 +1,10 @@
 import { z } from "zod";
 import {
-    getSlurmJobInfo, cancelSlurmJob, submitSlurmJob, getSlurmClusterInfo, getFinishedSlurmJobInfo
+    getSlurmQueueInfo, cancelSlurmJob, submitSlurmJob, getSlurmClusterInfo, getSlurmJobInfo,
+    updateSlurmNodeState
 } from "slurmjs";
 import { loadConfig } from "./config.js";
-import { Tool } from "./utils.js";
+import { Tool, runWithErrorHandling } from "./utils.js";
 import { logger } from "./logger.js";
 import os from 'os';
 
@@ -11,17 +12,10 @@ const configure = await loadConfig();
 const username = os.userInfo().username;
 
 async function getClusterInfo() {
-    const res = await getSlurmClusterInfo();
-    if (res.success) {
-        return {
-            type: "text",
-            text: JSON.stringify(res.data, null, 0),
-        };
-    }
-    return {
-        type: "text",
-        text: "Failed to get cluster information",
-    };
+    return runWithErrorHandling("Failed to get cluster information", async () => {
+        const partitions = await getSlurmClusterInfo();
+        return JSON.stringify(partitions, null, 0);
+    });
 }
 
 const getClusterInfoTool = new Tool(
@@ -44,18 +38,11 @@ async function cancelJob({ jobId, reason, confirm }) {
             text: "Job cancellation is not confirmed",
         };
     }
-    const res = await cancelSlurmJob(jobId);
-    if (res.success) {
+    return runWithErrorHandling("Job cancellation failed", async () => {
+        await cancelSlurmJob(jobId);
         logger.info(`Job ${jobId} cancelled by ${reason}`);
-        return {
-            type: "text",
-            text: "Job cancelled successfully",
-        };
-    }
-    return {
-        type: "text",
-        text: "Job cancellation failed: " + (res.error ?? "unknown error"),
-    };
+        return "Job cancelled successfully";
+    });
 }
 
 const cancelJobTool = new Tool(
@@ -70,41 +57,32 @@ const cancelJobTool = new Tool(
 );
 
 async function listSlurmJobs() {
-    const jobs = await getSlurmJobInfo({u: username});
-    if (jobs.success) {
-        return {
-            type: "text",
-            text: JSON.stringify(jobs.data, null, 0),
-        };
-    }
-    else {
-        return {
-            type: "text",
-            text: "Failed to get Slurm jobs",
-        };
-    }
+    return runWithErrorHandling("Failed to get Slurm jobs", async () => {
+        const jobs = await getSlurmQueueInfo();
+        const userJobs = jobs.filter(job => job.user === username);
+        return JSON.stringify(userJobs, null, 0);
+    });
 }
 
 const listSlurmJobsTool = new Tool(
     "list-slurm-jobs",
-    "List all Slurm jobs",
+    "List the Slurm jobs of the current user",
     z.object({}),
     listSlurmJobs,
 );
 
 async function submitJob({ jobFile }) {
-    const res = await submitSlurmJob(jobFile);
-    if (res.success) {
-        logger.info(`Job submitted successfully: ${res.data}`);
+    if (configure.blackList.includes("submitJob")) {
         return {
             type: "text",
-            text: "Job submitted successfully with job ID: " + res.data,
+            text: "Job submission is not allowed",
         };
     }
-    return {
-        type: "text",
-        text: "Job submission failed: " + (res.error ?? "unknown error"),
-    };
+    return runWithErrorHandling("Job submission failed", async () => {
+        const jobId = await submitSlurmJob(jobFile);
+        logger.info(`Job submitted successfully: ${jobId}`);
+        return "Job submitted successfully with job ID: " + jobId;
+    });
 }
 
 const submitSlurmJobTool = new Tool(
@@ -116,48 +94,78 @@ const submitSlurmJobTool = new Tool(
     submitJob
 );
 
-async function getFinishedJobs({option, id}) {
-    const jobs = await getFinishedSlurmJobInfo({u: username});
-    if (jobs.success) {
-        var res;
-        var hint = "";
-        if (option == "all") {
-            res = jobs.data;
+async function getFinishedJobs({ option, id }) {
+    return runWithErrorHandling("Failed to get finished Slurm jobs", async () => {
+        const jobs = await getSlurmJobInfo();
+        const finishedJobs = jobs.filter(job =>
+            job.user === username && !job.status.includes("RUNNING")
+        );
+
+        if (option === "all") {
+            return JSON.stringify(finishedJobs, null, 0);
         }
-        else if (option == "id") {
-            res = jobs.data.find(job => job.id === id) ?? {
-                type: "text",
-                text: "Job not found",
-            };
-        }
-        else {
-            res = jobs.data.slice(0, 3);
-            hint = ` and other ${jobs.data.length - 3} jobs`;
+        if (option === "id") {
+            const job = finishedJobs.find(job => job.jobId === id);
+            return job ? JSON.stringify(job, null, 0) : "Job not found";
         }
 
-        return {
-            type: "text",
-            text: JSON.stringify(res, null, 0) + hint,
-        };
-    }
-    else {
-        return {
-            type: "text",
-            text: "Failed to get finished Slurm jobs: " + (jobs.error ?? "unknown error"),
-        };
-    }
+        const recentJobs = finishedJobs.slice(0, 3);
+        const hint = finishedJobs.length > 3
+            ? ` and other ${finishedJobs.length - 3} jobs`
+            : "";
+        return JSON.stringify(recentJobs, null, 0) + hint;
+    });
 }
 
 const getFinishedJobsTool = new Tool(
     "get-slurm-finished-jobs",
     "Get the finished Slurm jobs",
     z.object({
-        option: z.enum(["all", "id"]).describe("The option to get the finished Slurm jobs"),
+        option: z.enum(["all", "id"]).optional().describe(
+            "The option to get the finished Slurm jobs. When omitted, the 3 most recent jobs are returned."
+        ),
         id: z.number().describe(
-            "The ID of the job to get the finished Slurm jobs, when option is all, this parameter can be omitted"
+            "The ID of the job to get the finished Slurm jobs, required when option is id"
         ).optional(),
     }),
     getFinishedJobs,
 );
 
-export { cancelJobTool, listSlurmJobsTool, submitSlurmJobTool, getClusterInfoTool, getFinishedJobsTool };
+async function updateNodeState({ nodeName, state, reason, confirm }) {
+    if (configure.blackList.includes("updateNodeState")) {
+        return {
+            type: "text",
+            text: "Node state update is not allowed",
+        };
+    }
+    if (!confirm) {
+        return {
+            type: "text",
+            text: "Node state update is not confirmed",
+        };
+    }
+    return runWithErrorHandling("Failed to update node state", async () => {
+        await updateSlurmNodeState(nodeName, state);
+        logger.info(`Node ${nodeName} state updated to ${state} by ${reason}`);
+        return `Node ${nodeName} state updated to ${state}`;
+    });
+}
+
+const updateNodeStateTool = new Tool(
+    "update-node-state",
+    "Update the state of a cluster node, e.g. DRAIN, RESUME, DOWN or IDLE. Requires administrator privileges.",
+    z.object({
+        nodeName: z.string().describe(
+            "The name of the node, node list expressions such as node[01-03] are supported"
+        ),
+        state: z.string().describe("The target state, e.g. IDLE, DOWN, DRAIN, RESUME"),
+        reason: z.string().describe("The reason for updating the node state"),
+        confirm: z.boolean().describe("Whether to confirm the state update"),
+    }),
+    updateNodeState,
+);
+
+export {
+    cancelJobTool, listSlurmJobsTool, submitSlurmJobTool, getClusterInfoTool, getFinishedJobsTool,
+    updateNodeStateTool
+};

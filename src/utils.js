@@ -11,6 +11,22 @@ function wrapToolResult(func) {
     }
 }
 
+async function runWithErrorHandling(errorMessage, func) {
+    try {
+        const text = await func();
+        return {
+            type: "text",
+            text,
+        };
+    }
+    catch (error) {
+        return {
+            type: "text",
+            text: `${errorMessage}: ${error.message}`,
+        };
+    }
+}
+
 function toAbsoluteSoftwarePath(relativePath){
     const homeDir = env.HOME;
     const softwareDir = path.join(homeDir, ".slurm-mcp");
@@ -37,4 +53,4 @@ class Tool {
         );
     }
 }
-export { Tool, toAbsoluteSoftwarePath };
+export { Tool, toAbsoluteSoftwarePath, runWithErrorHandling };

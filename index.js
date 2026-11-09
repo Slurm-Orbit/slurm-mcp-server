@@ -7,7 +7,8 @@ import {
   getSlurmTemplateFileTool, listSlurmFilesTool, createSlurmFileTool 
 } from "./src/fsTools.js";
 import {
-  submitSlurmJobTool, cancelJobTool, getClusterInfoTool, listSlurmJobsTool, getFinishedJobsTool
+  submitSlurmJobTool, cancelJobTool, getClusterInfoTool, listSlurmJobsTool, getFinishedJobsTool,
+  updateNodeStateTool
 } from "./src/slurmTools.js";
 
 const server = new McpServer({
@@ -23,5 +24,6 @@ submitSlurmJobTool.registerTo(server);
 getClusterInfoTool.registerTo(server);
 listSlurmJobsTool.registerTo(server);
 getFinishedJobsTool.registerTo(server);
+updateNodeStateTool.registerTo(server);
 
 await server.connect(new StdioServerTransport());
