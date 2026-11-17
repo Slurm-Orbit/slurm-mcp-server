@@ -1,6 +1,6 @@
 {
   "name": "@slurm-orbit/slurm-mcp-server",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "MCP server for Slurm HPC clusters — job submission, monitoring, and file management",
   "type": "module",
   "main": "index.js",
@@ -23,7 +23,7 @@
     "cluster",
     "job-scheduler"
   ],
-  "license": "Apache-2.0",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "log4js": "^6.9.1",
